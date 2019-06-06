@@ -1,7 +1,11 @@
+####################################################################################################################
+###################### ANALYSIS OF THE REAL-LIFE DATA ############################################
+
 #Importing data
 math.data=read.csv(file.choose(),header = T)
 names(math.data)
 
+#Some data manipulation
 Gender=ifelse(math.data$gender=="Man","Male",
               ifelse(math.data$gender=="Vrouw","Female","none"))
 Gender=as.factor(Gender)
@@ -18,7 +22,7 @@ math.data$iduser=as.factor(math.data$iduser)
 math.data$iditem=as.factor(math.data$iditem)
 math.data$ses=as.factor(math.data$ses)
 
-
+#Some basic descriptive statistics 
 sum_mat=matrix(data=NA,nrow=7,ncol = 5)
 for(i in 1:7){
   sum_mat[i,1]=i
@@ -28,17 +32,7 @@ for(i in 1:7){
   sum_mat[i,5]=max(math.data$wtime[math.data$ses==i])
 }
 
-#Obtaining the abilities
-library(stats)
-items.mat=reshape(math.data[,c("grade","iduser","iditem")],idvar = "iduser",timevar = "iditem",direction = "wide")
-
-install.packages("ltm")
-library(ltm)
-items.dat=as.data.frame(items.mat[,2:ncol(items.mat)])
-rasch.fit=rasch(items.dat,na.action = na.exclude)
-names(items.dat)
-factor.scores(rasch.fit)
-
+#Scatter plot
 library(GGally)
 ggpairs(math.data[,c("grade","ses","wtime",
                     "btime","item")],columnLabels = c("Response","Session","Within-time","Between-time","Item"))
@@ -52,8 +46,6 @@ nrow(math)
 #GAM vs GLM
 library(mgcv)
 library(lme4)
-install.packages("itsadug")
-library(itsadug)
 #Intercept model
 math.gam.int=gam(grade~ 1+s(iditem,bs="re")+s(iduser,bs="re"),family = binomial(link = "logit"),data=math.data,method = "P-REML")
 summary(math.gam.int)
@@ -64,76 +56,9 @@ math.glm.int= glmer(grade~(1|iduser)+(1|iditem),data=math.sub,family = binomial(
 summary(math.glm.int)
 BIC(math.glm.int, math.gam.int)
 
-#### WITHIN AND BETWEEN TIME TREND #########
-
-#GAM estimating within time trend using cubic regression spline
-math.gam.wt=gam(grade~ 1 + s(iduser,bs="re") +s(wtime,bs="cr")+s(wtime,by=iduser,bs="cr")+s(iditem,bs="re"),family = binomial(link = "logit"),
-                data = math.sub,method = "REML")
-summary(math.gam.wt)
-gam.vcomp(math.gam.wt)
-BIC(math.gam.wt)
-
-#GAM estimating within time trend using thin-plate regression spline
-math.gam.wt2=bam(grade~ 1 + s(iduser,bs="re") +s(wtime,bs="tp")+s(wtime,by=iduser,bs="tp")+s(iditem,bs="re"),family = binomial(link = "logit"),
-                 data = math.sub,method = "REML")
-summary(math.gam.wt2)
-gam.vcomp(math.gam.wt2)
-
-#GAM estimating within and between time trend using cubic regression spline
-math.gam.wb=bam(grade~ 1 + s(iduser,bs="re") +s(wtime,bs="cr")+s(wtime,iduser,bs="re")+s(btime,bs="cr")+s(btime,iduser,bs="re")
-                 +s(iditem,bs="re"),family = binomial(link = "logit"),
-                data = math.sub,method = "REML")
-summary(math.gam.wb)
-gam.vcomp(math.gam.wb)
-par(mfrow=c(2,2))
-gam.check(math.gam.wb)
-inv.logit(0.2584)
-par(mfrow=c(1,2))
-plot.gam(math.gam.wb,select=2,scale = 0,ylab = "Ability ",
-         xlab="Within-session time",shade = TRUE,col ="blue")
-plot.gam(math.gam.wb,select=4,scale = 0,ylab = "Ability",
-         xlab="Between-session time",shade = TRUE,col ="blue")
-
-user_vec=c("6","7","8")
-par(mfrow=c(2,3))
-for(i in user_vec){
-  plot_smooth(math.gam.wb, view = "btime",cond=list(iduser=i),rm.ranef=FALSE,col = "blue", 
-              xlab = "between-session time",ylab=paste("Ability of learner ",i))
-  
-}
 
 
-#GAM estimating within and between time trend using thin plate regression spline
-math.gam.wb2=bam(grade~ 1 + s(iduser,bs="re") +s(wtime,bs="tp")+s(wtime,iduser,bs="re")+s(btime,bs="tp")+s(btime,iduser,bs="re")
-                 +s(iditem,bs="re"),family = binomial(link = "logit"),
-                 data = math.sub,method = "REML")
-summary(math.gam.wb)
-gam.vcomp(math.gam.wb)
-BIC(math.gam.wt)
-
-
-BIC(math.gam.wb,math.gam.wb2,math.glm.wb)
-AIC(math.gam.wb,math.gam.wb2,math.glm.wb)
-
-
-#GLMM estimating within time trend
-math.glm.wb=glmer(grade~ 1 + wtime + btime+(1+btime+wtime|iduser) +(1|iditem),data=math.sub, family = binomial(link = "logit"))
-summary(math.glm.wb)
-
-#math.glm.wt    6.0000 3850.502
-#math.gam.wt2 245.4765 5207.146
-AIC(math.glm.wb,math.gam.wb,math.gam.wb2)
-
-#math.glm.wt    6.0000 3814.012
-#math.gam.wt2 245.4765 3714.211
-AIC(math.glm.wt,math.gam.wt2)
-
-mod.mat=model.matrix(math.gam.wt2)
-rm(mod.mat)
-mod.dat=as.data.frame(mod.mat)
-
-
-##### WITHIN AND SESSIONS #####
+##### CASE ONE : WITHIN AND SESSIONS #####
 
 #GAM with cubic regression spline
 math.gam.s=bam(grade~ ses+ s(iduser,by=ses,bs="re") +s(wtime,by=ses,bs="cr")+s(wtime,iduser,by=ses,bs="re")+
@@ -153,6 +78,21 @@ summary(math.gam.s2)
 gam.vcomp(math.gam.s2)
 par(mfrow=c(2,2))
 gam.check(math.gam.s2)
+
+
+#GLMM 
+math.glm.s=glmer(grade~ ses+ wtime:ses+(ses+ses:wtime|iduser) +(1|iditem),
+                 data=math.sub, family = binomial(link = "logit"))
+summary(math.glm.s)
+
+
+AIC(math.gam.s,math.gam.s2,math.glm.s)
+BIC(math.gam.s,math.gam.s2,math.glm.s)
+
+
+#Plotting of best spline
+install.packages("itsadug")
+library(itsadug)
 plot.gam(math.gam.s,select=5,ylab = "Ability in first session",
          xlab="Within-session time",scale = 0,shade = TRUE,col ="blue")
 plot.gam(math.gam.s,select=6,scale = 0,ylab = "Ability in second session",
@@ -177,18 +117,67 @@ library(voxel)
 plotGAM(math.gam.s,smooth.cov = "wtime")
 
 
-#GLMM 
-math.glm.s=glmer(grade~ ses+ wtime:ses+(ses+ses:wtime|iduser) +(1|iditem),
-                 data=math.sub, family = binomial(link = "logit"))
-summary(math.glm.s)
 
 
-AIC(math.gam.s,math.gam.s2,math.glm.s)
-BIC(math.gam.s,math.gam.s2,math.glm.s)
+#### CASE TWO : WITHIN AND BETWEEN TIME TREND #########
+
+#GAM estimating within time trend using cubic regression spline
+math.gam.wt=gam(grade~ 1 + s(iduser,bs="re") +s(wtime,bs="cr")+s(wtime,iduser,bs="re")+s(iditem,bs="re"),family = binomial(link = "logit"),
+                data = math.sub,method = "REML")
+summary(math.gam.wt)
+gam.vcomp(math.gam.wt)
+BIC(math.gam.wt)
+
+#GAM estimating within time trend using thin-plate regression spline
+math.gam.wt2=bam(grade~ 1 + s(iduser,bs="re") +s(wtime,bs="tp")+s(wtime,iduser,bs="re")+s(iditem,bs="re"),family = binomial(link = "logit"),
+                 data = math.sub,method = "REML")
+summary(math.gam.wt2)
+gam.vcomp(math.gam.wt2)
+
+#GAM estimating within and between time trend using cubic regression spline
+math.gam.wb=bam(grade~ 1 + s(iduser,bs="re") +s(wtime,bs="cr")+s(wtime,iduser,bs="re")+s(btime,bs="cr")+s(btime,iduser,bs="re")
+                 +s(iditem,bs="re"),family = binomial(link = "logit"),
+                data = math.sub,method = "REML")
+summary(math.gam.wb)
+gam.vcomp(math.gam.wb)
+par(mfrow=c(2,2))
+gam.check(math.gam.wb)
+inv.logit(0.2584)
 
 
-HLgof.test(fit = fitted(math.gam.s2), obs = math.sub$grade)
-HLgof.test(fit = fitted(math.glm.s), obs = math.sub$grade)
+#GAM estimating within and between time trend using thin plate regression spline
+math.gam.wb2=bam(grade~ 1 + s(iduser,bs="re") +s(wtime,bs="tp")+s(wtime,iduser,bs="re")+s(btime,bs="tp")+s(btime,iduser,bs="re")
+                 +s(iditem,bs="re"),family = binomial(link = "logit"),
+                 data = math.sub,method = "REML")
+summary(math.gam.wb)
+gam.vcomp(math.gam.wb)
+
+
+#GLMM estimating within time and between time trend
+math.glm.wb=glmer(grade~ 1 + wtime + btime+(1+btime+wtime|iduser) +(1|iditem),data=math.sub, family = binomial(link = "logit"))
+summary(math.glm.wb)
+
+#math.glm.wt    6.0000 3850.502
+#math.gam.wt2 245.4765 5207.146
+AIC(math.glm.wb,math.gam.wb,math.gam.wb2)
+
+
+#Plotting best splines 
+par(mfrow=c(1,2))
+plot.gam(math.gam.wb,select=2,scale = 0,ylab = "Ability ",
+         xlab="Within-session time",shade = TRUE,col ="blue")
+plot.gam(math.gam.wb,select=4,scale = 0,ylab = "Ability",
+         xlab="Between-session time",shade = TRUE,col ="blue")
+
+user_vec=c("6","7","8")
+par(mfrow=c(2,3))
+for(i in user_vec){
+  plot_smooth(math.gam.wb, view = "btime",cond=list(iduser=i),rm.ranef=FALSE,col = "blue", 
+              xlab = "between-session time",ylab=paste("Ability of learner ",i))
+  
+}
+
+
 
 
 #### EVALUATION OF MODELS ####
@@ -249,57 +238,16 @@ tab.glm.mat.a=table(pred.glm.wt,math.sub$grade)
 1-sum(diag(tab.glm.mat.s))/sum(tab.glm.mat.s)
 
 
-library(MKmisc)
-HLgof.test(fit = gam.wt.fit, obs = math.sub$grade)
-HLgof.test(fit=fitted(math.gam.wt),obs=math.sub$grade)
-HLgof.test(fit = glm.wt.fit, obs = math.sub$grade)
-
-
 
 #Extracting the difficulties from GAM
 idx <-grep("iditem", names(coef(math.gam.wt2)))
 diff.rr.gam<-coef(math.gam.wt2)[idx]
 attributes(diff.rr.gam)<-NULL
-
-
 which.min(diff.rr.gam)
 diff.rr.gam[30]
 which.max(diff.rr.gam)
 diff.rr.gam[32]
 
-length(diff.rr.gam)
-#Plots time trends
-gam.df=data.frame(wtime=seq(from=min(math.sub$wtime),to=max(math.sub$wtime),length.out = nrow(math.sub)),iditem=math.sub$iditem,
-                  iduser=33)
-pred.gam=predict(math.gam.wt2,type = "terms")
-pred.gam=as.data.frame(pred.gam)
-plot(pred.gam[,2]~math.sub$wtime)
-par(mfrow=c(3,3))
-plot(math.gam.wt2,scale = 0,select=3,ylab = "General Ability ",xlab = "Within-session time",col="blue",shade = TRUE,
-     seWithMean = TRUE)
-plot_smooth(math.gam.wt2,view = "wtime",cond =list(),rug = TRUE,rm.ranef=TRUE)
-plot_smooth(math.gam.wt2, view = "wtime",cond=list(iduser="7"),rm.ranef=TRUE,col = "blue", 
-            xlab = "within-session time",ylab="Ability of learner 7")
 
 
-gam.mat=model.matrix(math.gam.wt2)
-gam.df=as.data.frame(gam.mat)
 
-math.gam.bt=gam(grade~ 1+ s(iduser,bs="re") +s(btime,bs="cr")+s(btime,by=iduser,bs="cr")+
-                  s(iditem,bs="re"),family = binomial(link = "logit"),
-                data = math.sub,method = "P-REML")
-summary(math.gam.bt)
-par(mfrow=c(2,2))
-plot.gam(math.gam.bt, select=9,scale=0)
-plot_smooth(math.gam.bt, view = "btime",cond=list(iduser="7"),rm.ranef=TRUE,col = "blue", 
-            xlab = "between-session time",ylab="Ability of learner 7")
-
-gam.vcomp(math.gam.wb)
-BIC(math.gam.wb)
-
-
-library(ggplot2)
-ggplot(data=math.sub,aes(x=wtime,y=pred.gam))+
-  geom_point(data=math.sub,colour=math.sub$iduser)+theme(legend.position="none")+
-  geom_line(data =math.sub,aes(x=wtime,y=pred.gam,group=math.sub$iduser))+
-  labs(x="Within-time",y="Probability to correctly respond")
